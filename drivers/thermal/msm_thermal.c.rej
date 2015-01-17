@@ -1,0 +1,104 @@
+--- drivers/thermal/msm_thermal.c
++++ drivers/thermal/msm_thermal.c
+@@ -3440,10 +3486,9 @@ static void check_temp(struct work_struct *work)
+ 	long temp = 0;
+ 	int ret = 0;
+ 
+-	if (!msm_thermal_probed)
+-		return;
+-
+ 	do_therm_reset();
++	if (!msm_thermal_probed)
++ 		return;
+ 
+ 	ret = therm_get_temp(msm_thermal_info.sensor_id, THERM_TSENS_ID, &temp);
+ 	if (ret) {
+@@ -4744,18 +4789,26 @@ static int __ref set_enabled(const char *val, const struct kernel_param *kp)
+ {
+ 	int ret = 0;
+ 
+-	ret = param_set_bool(val, kp);
+-	if (!enabled)
++	if (*val == '0' || *val == 'n' || *val == 'N') {
++		enabled = 0;
+ 		interrupt_mode_init();
+-	else
+-		pr_info("no action for enabled = %d\n",
+-			enabled);
++		pr_info("%s: msm_thermal disabled!\n", KBUILD_MODNAME);
++	} else {
++		if (!enabled) {
++			enabled = 1;
++			schedule_delayed_work(&check_temp_work,
++				msecs_to_jiffies(msm_thermal_info.poll_ms));
++			pr_info("%s: rescheduling...\n", KBUILD_MODNAME);
++		} else
++			pr_info("%s: already running...\n", KBUILD_MODNAME);
++	}
+ 
+ 	pr_info("enabled = %d\n", enabled);
+ 
+ 	return ret;
+ }
+ 
++
+ static struct kernel_param_ops module_ops = {
+ 	.set = set_enabled,
+ 	.get = param_get_bool,
+@@ -4764,27 +4817,6 @@ static struct kernel_param_ops module_ops = {
+ module_param_cb(enabled, &module_ops, &enabled, 0644);
+ MODULE_PARM_DESC(enabled, "enforce thermal limit on cpu");
+ 
+-/* Poll ms */
+-module_param_named(poll_ms, msm_thermal_info.poll_ms, uint, 0664);
+-
+-/* Temp Threshold */
+-module_param_named(temp_threshold, msm_thermal_info.limit_temp_degC,
+-			int, 0664);
+-module_param_named(core_limit_temp_degC, msm_thermal_info.core_limit_temp_degC,
+-		   uint, 0644);
+-module_param_named(hotplug_temp_degC, msm_thermal_info.hotplug_temp_degC,
+-		   uint, 0644);
+-module_param_named(freq_mitig_temp_degc,
+-		   msm_thermal_info.freq_mitig_temp_degc, uint, 0644);
+-
+-/* Control Mask */
+-module_param_named(freq_control_mask,
+-		   msm_thermal_info.bootup_freq_control_mask, uint, 0644);
+-module_param_named(core_control_mask, msm_thermal_info.core_control_mask,
+-			uint, 0664);
+-module_param_named(freq_mitig_control_mask,
+-		   msm_thermal_info.freq_mitig_control_mask, uint, 0644);
+-
+ static ssize_t show_cc_enabled(struct kobject *kobj,
+ 		struct kobj_attribute *attr, char *buf)
+ {
+@@ -7235,12 +7345,13 @@ static int msm_thermal_dev_probe(struct platform_device *pdev)
+ 	msm_thermal_ioctl_init();
+ 	ret = msm_thermal_init(&data);
+ 	msm_thermal_probed = true;
+-
++	pr_info("%s: msm_thermal_dev_probe completed!\n", KBUILD_MODNAME);
+ 	return ret;
+ fail:
+ 	if (ret)
+ 		pr_err("Failed reading node=%s, key=%s. err:%d\n",
+ 			node->full_name, key, ret);
++		pr_info("%s: msm_thermal_dev_probe failed!\n", KBUILD_MODNAME);
+ probe_exit:
+ 	return ret;
+ }
+@@ -7376,7 +7488,12 @@ int __init msm_thermal_late_init(void)
+ 	create_thermal_debugfs();
+ 	msm_thermal_add_bucket_info_nodes();
+ 	uio_init(msm_thermal_info.pdev);
+-
++	msm_thermal_add_stat_nodes();
+ 	return 0;
+ }
+ late_initcall(msm_thermal_late_init);
++MODULE_LICENSE("GPL");
++MODULE_AUTHOR("Praveen Chidambaram <pchidamb@codeaurora.org>");
++MODULE_AUTHOR("Paul Reioux <reioux@gmail.com>");
++MODULE_DESCRIPTION("Based on intelligent thermal driver version 2 for Qualcomm based SOCs");
++MODULE_DESCRIPTION("originally from Qualcomm's open source repo");

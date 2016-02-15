@@ -43,6 +43,10 @@ static DEFINE_SPINLOCK(tz_lock);
 #define BUSY_BIN		95
 #define LONG_FRAME		25000
 #define MAX_TZ_VERSION		0
+#define LONG_FLOOR		50000
+#define HIST			5
+#define TARGET			80
+#define CAP			75
 
 /*
  * Use BUSY_BIN to check for fully busy rendering
@@ -187,6 +191,18 @@ static int tz_init(struct devfreq_msm_adreno_tz_data *priv,
 	return ret;
 }
 
+static void _update_cutoff(struct devfreq_msm_adreno_tz_data *priv,
+				unsigned int norm_max)
+{
+	int i;
+
+	priv->bus.max = norm_max;
+	for (i = 0; i < priv->bus.num; i++) {
+		priv->bus.up[i] = priv->bus.p_up[i] * norm_max / 100;
+		priv->bus.down[i] = priv->bus.p_down[i] * norm_max / 100;
+	}
+}
+
 #ifdef CONFIG_ADRENO_IDLER
 extern int adreno_idler(struct devfreq_dev_status stats, struct devfreq *devfreq,
 		 unsigned long *freq);
@@ -198,9 +214,18 @@ static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq,
 	int result = 0;
 	struct devfreq_msm_adreno_tz_data *priv = devfreq->data;
 	struct devfreq_dev_status stats;
+	struct xstats b;
 	int val, level = 0;
+  	int act_level;
+ 	int norm_cycles;
+ 	int gpu_percent;
 	unsigned int scm_data[3];
 	static int busy_bin, frame_flag;
+
+	if (priv->bus.num)
+		stats.private_data = &b;
+	else
+		stats.private_data = NULL;
 
 	/* keeps stats.private_data == NULL   */
 	result = devfreq->profile->get_dev_status(devfreq->dev.parent, &stats);
@@ -225,6 +250,12 @@ static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq,
 	*freq = stats.current_frequency;
 	priv->bin.total_time += stats.total_time;
 	priv->bin.busy_time += stats.busy_time;
+	if (priv->bus.num) {
+		priv->bus.total_time += stats.total_time;
+		priv->bus.gpu_time += stats.busy_time;
+		priv->bus.ram_time += b.ram_time;
+		priv->bus.ram_time += b.ram_wait;
+	}
 
 	/*
 	 * Do not waste CPU cycles running this algorithm if
@@ -254,9 +285,10 @@ static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq,
 	} else {
 		busy_bin = 0;
 		frame_flag = 0;
- 	}
+	}
 
 	level = devfreq_get_freq_level(devfreq, stats.current_frequency);
+
 	if (level < 0) {
 		pr_err(TAG "bad freq %ld\n", stats.current_frequency);
 		return level;
@@ -324,14 +356,14 @@ static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq,
 			*flag = DEVFREQ_FLAG_SLOW_HINT;
 	}
 
-clear:
-	priv->bus.total_time = 0;
-	priv->bus.gpu_time = 0;
-	priv->bus.ram_time = 0;
+	clear:
+		priv->bus.total_time = 0;
+		priv->bus.gpu_time = 0;
+		priv->bus.ram_time = 0;
 
-end:
-	*freq = devfreq->profile->freq_table[level];
-	return 0;
+	end:
+		*freq = devfreq->profile->freq_table[level];
+		return 0;
 }
 
 static int tz_notify(struct notifier_block *nb, unsigned long type, void *devp)

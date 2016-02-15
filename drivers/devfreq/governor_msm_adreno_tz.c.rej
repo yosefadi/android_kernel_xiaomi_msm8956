@@ -1,50 +1,14 @@
 --- drivers/devfreq/governor_msm_adreno_tz.c
 +++ drivers/devfreq/governor_msm_adreno_tz.c
-@@ -197,6 +213,7 @@ static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq,
- 	struct devfreq_dev_status stats;
- 	int val, level = 0;
- 	unsigned int scm_data[3];
-+	static int busy_bin, frame_flag;
- 
- 	/* keeps stats.private_data == NULL   */
- 	result = devfreq->profile->get_dev_status(devfreq->dev.parent, &stats);
-@@ -222,6 +245,13 @@ static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq,
- 		return 0;
- 	}
- 
-+#ifdef CONFIG_ADRENO_IDLER
-+	if (adreno_idler(stats, devfreq, freq)) {
-+		/* adreno_idler has asked to bail out now */
-+		return 0;
-+	}
-+#endif
-+
- 	priv->bin.total_time += stats.total_time;
- 	priv->bin.busy_time += stats.busy_time;
- 
-@@ -257,7 +296,11 @@ static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq,
+@@ -296,10 +328,9 @@ static int tz_get_target_freq(struct devfreq *devfreq, unsigned long *freq,
+ 	 * If there is an extended block of busy processing,
  	 * increase frequency.  Otherwise run the normal algorithm.
  	 */
- 	if (priv->bin.busy_time > CEILING) {
--		val = -1 * level;
-+	if (priv->bin.busy_time > CEILING ||
-+		(busy_bin > CEILING && frame_flag)) {
-+ 		val = -1 * level;
-+		busy_bin = 0;
-+		frame_flag = 0;
+-	if (priv->bin.busy_time > CEILING) {
+ 	if (priv->bin.busy_time > CEILING ||
+ 		(busy_bin > CEILING && frame_flag)) {
+- 		val = -1 * level;
++		val = -1 * level;
+ 		busy_bin = 0;
+ 		frame_flag = 0;
  	} else {
- 
- 		scm_data[0] = level;
-@@ -438,10 +519,11 @@ static int tz_suspend(struct devfreq *devfreq)
- {
- 	struct devfreq_msm_adreno_tz_data *priv = devfreq->data;
- 	unsigned int scm_data[2] = {0, 0};
--	__secure_tz_reset_entry2(scm_data, sizeof(scm_data), priv->is_64);
- 
- 	suspended = true;
- 
-+	__secure_tz_reset_entry2(scm_data, sizeof(scm_data), priv->is_64);
-+
- 	priv->bin.total_time = 0;
- 	priv->bin.busy_time = 0;
- 	return 0;

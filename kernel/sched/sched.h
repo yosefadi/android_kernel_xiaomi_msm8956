@@ -747,7 +747,7 @@ DECLARE_PER_CPU(struct rq, runqueues);
 #define this_rq()		(&__get_cpu_var(runqueues))
 #define task_rq(p)		cpu_rq(task_cpu(p))
 #define cpu_curr(cpu)		(cpu_rq(cpu)->curr)
-
+#define raw_rq()		(&__raw_get_cpu_var(runqueues))
 
 #ifdef CONFIG_INTELLI_HOTPLUG
 struct nr_stats_s {

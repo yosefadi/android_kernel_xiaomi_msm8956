@@ -256,8 +256,8 @@ static void update_cpu_freq(void)
 	cpufreq_req.freq.min_freq = CPUFREQ_MIN_NO_MITIGATION;
 
 	if (bcl_vph_state == BCL_LOW_THRESHOLD
-		|| bcl_ibat_state == BCL_HIGH_THRESHOLD
-		&& battery_soc_val <= soc_low_threshold) {
+		|| (bcl_ibat_state == BCL_HIGH_THRESHOLD
+		&& battery_soc_val <= soc_low_threshold)) {
 		cpufreq_req.freq.max_freq = (gbcl->bcl_monitor_type
 			== BCL_IBAT_MONITOR_TYPE) ? gbcl->btm_freq_max
 			: gbcl->bcl_p_freq_max;
